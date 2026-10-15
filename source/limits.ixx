@@ -6,6 +6,7 @@ module;
 export module limits;
 
 import common;
+import extrainfo;
 import settings;
 
 class LimitAdjuster
@@ -595,6 +596,240 @@ public:
                     if (!pattern.empty())
                     {
                         shGetWeaponInfoIdByHash = safetyhook::create_inline(pattern.get_first(0), getWeaponInfoIdByHash);
+                    }
+                }
+
+                // WaveSlots
+                {
+                    static char g_log[MAX_PATH], g_ini[MAX_PATH];
+                    static HMODULE g_self = nullptr;
+                                    
+                    static void Log(const char* fmt, ...)
+                    {
+                        FILE* f = fopen(g_log, "a"); if (!f) return;
+                        SYSTEMTIME st; GetLocalTime(&st);
+                        fprintf(f, "[%02d:%02d:%02d.%03d] ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+                        va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
+                        fputc('\n', f); fclose(f);
+                    }
+                    
+                    // ---- engine audio wave slots --------------------------------------------------------------------
+                    static const DWORD kSlotTableRva = 0xE832B8;
+                    static const DWORD kSlotCountRva = 0xE83298;
+                    static const DWORD kSlotBoundRva = 0x58D50F;      // imm8 of `cmp edi, 0x19`
+                    struct SlotRef { DWORD rva; DWORD field; };
+                    static const SlotRef kSlotRefs[] = {
+                        { 0x58B979, 8 }, { 0x58B984, 8 }, { 0x58B98F, 12 }, { 0x58B995, 8 },
+                        { 0x58CBD0, 0 }, { 0x58D4C6, 8 }, { 0x58ECC6, 0 }, { 0x58ED09, 0 },
+                        { 0x58ED0F, 8 }, { 0x58ED23, 4 }, { 0x58ED35, 8 }, { 0x599577, 0 },
+                        { 0x599767, 0 }, { 0x828054, 0 },
+                    };
+                    static const int kNumSlotRefs = (int)(sizeof kSlotRefs / sizeof kSlotRefs[0]);
+                    static const int kStockSlots = 25;
+                    static const int kMaxSlots   = 64;      // the relocated table's capacity
+                    
+                    static int g_cfgSlots = 0;              // 0 = leave stock
+                    static __declspec(align(16)) DWORD g_slotTable[(kMaxSlots + 2) * 4];   // 32-byte header + entries
+                    static bool g_slotsDone = false, g_slotsWarned = false;
+                    static bool g_slotsMissedWindow = false;   // audio init beat us to it; stop trying, but do not claim success
+                    
+                    // ---- physical audio heap ------------------------------------------------------------------------
+                    static const DWORD kAudioHeapRva = 0x4C158C;            // imm32 of `mov esi, 0x7E00000`
+                    static const int   kAudioHeapStock = 132120576;         // 126 MB
+                    static int g_cfgHeapMB = 0;                             // 0 = leave stock
+                    static bool g_heapDone = false, g_heapWarned = false;
+                    
+                    // ---- waveslots.xml ------------------------------------------------------------------------------
+                    // The engine probes slots BY NAME, so raising the bound achieves nothing unless
+                    // pc/audio/config/waveslots.xml also declares STREAM_ENGINE_1..Slots. This used to be a separate
+                    // PowerShell script; Nexus quarantines any archive containing one, so it lives here instead.
+                    //
+                    // The file is read by the audio system, which initialises well after this DLL is attached, so
+                    // writing it at load lands in time for the same session. Missing entries are APPENDED, never
+                    // replaced, so another audio mod's edits survive. The original is copied to waveslots.xml.bak the
+                    // first time, and never overwritten after that.
+                    static const int kSlotBytes = 794624;    // every stock engine slot declares exactly this
+                    static bool g_cfgWriteWaveslots = true;
+                    
+                    static bool PatchAudioHeap(BYTE* base)
+                    {
+                        BYTE* p = base + kAudioHeapRva;
+                        MEMORY_BASIC_INFORMATION mbi;
+                        if (!VirtualQuery(p, &mbi, sizeof mbi) || !(mbi.State & MEM_COMMIT)) return false;
+                        const int want = g_cfgHeapMB * 1024 * 1024;
+                        int cur = *(int*)p;
+                        if (cur == want)
+                        {
+                            g_heapDone = true;
+                            return true;
+                        }
+                        if (cur != kAudioHeapStock) 
+                            return false;
+                        DWORD old;
+                        if (!VirtualProtect(p, 4, PAGE_EXECUTE_READWRITE, &old))
+                            return false;
+                        *(int*)p = want;
+                        VirtualProtect(p, 4, old, &old);
+                        FlushInstructionCache(GetCurrentProcess(), p, 4);
+                        g_heapDone = true;
+                        return true;
+                    }
+                    
+                    static bool PatchEngineSlots(BYTE* base)
+                    {
+                        if (*(DWORD*)(base + kSlotCountRva) != 0)
+                            return false;
+                        if (base[kSlotBoundRva] != 0x19)
+                        {
+                            if (!g_slotsWarned)
+                            {
+                                g_slotsWarned = true;
+                            }
+                            return false;
+                        }
+                        const DWORD oldBase = (DWORD)base + kSlotTableRva;
+                        for (int i = 0; i < kNumSlotRefs; i++)
+                        {
+                            DWORD v = *(DWORD*)(base + kSlotRefs[i].rva);
+                            if (v != oldBase + kSlotRefs[i].field)
+                            {
+                                if (!g_slotsWarned)
+                                {
+                                    g_slotsWarned = true;
+                                }
+                                return false;
+                            }
+                        }
+                        memset(g_slotTable, 0, sizeof g_slotTable);
+                        const DWORD newBase = (DWORD)&g_slotTable[8];
+                        for (int i = 0; i < kNumSlotRefs; i++)
+                        {
+                            BYTE* p = base + kSlotRefs[i].rva;
+                            DWORD old;
+                            if (!VirtualProtect(p, 4, PAGE_EXECUTE_READWRITE, &old))
+                                return false;
+                            *(DWORD*)p = newBase + kSlotRefs[i].field;
+                            VirtualProtect(p, 4, old, &old);
+                        }
+                        DWORD old;
+                        VirtualProtect(base + kSlotBoundRva, 1, PAGE_EXECUTE_READWRITE, &old);
+                        base[kSlotBoundRva] = (BYTE)g_cfgSlots;
+                        VirtualProtect(base + kSlotBoundRva, 1, old, &old);
+                        FlushInstructionCache(GetCurrentProcess(), base + 0x58B000, 0x2E0000);
+                        g_slotsDone = true;
+                        return true;
+                    }
+                    
+                    // First fatal exception in the process, logged and passed straight on to the game's own handler.
+                    // This only ever reads and logs; it never swallows a crash.
+                    static LONG g_excLogged = 0;
+                    static LONG CALLBACK ExcLogger(EXCEPTION_POINTERS* ep)
+                    {
+                        const DWORD code = ep->ExceptionRecord->ExceptionCode;
+                        if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION && code != EXCEPTION_STACK_OVERFLOW
+                            && code != EXCEPTION_INT_DIVIDE_BY_ZERO && code != EXCEPTION_PRIV_INSTRUCTION)
+                            return EXCEPTION_CONTINUE_SEARCH;
+                        if (InterlockedIncrement(&g_excLogged) > 6)
+                            return EXCEPTION_CONTINUE_SEARCH;
+                        BYTE* base = (BYTE*)GetModuleHandleA(NULL);
+                        DWORD exeSize = 0x1BE6400;   // 1.2.0.59 SizeOfImage
+                        CONTEXT* c = ep->ContextRecord;
+                        DWORD eip = c->Eip;
+                        HMODULE owner = nullptr;
+                        char modName[MAX_PATH] = "?";
+                        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)eip, &owner) && owner)
+                        {
+                            GetModuleFileNameA(owner, modName, sizeof modName);
+                            const char* slash = strrchr(modName, '\\');
+                            if (slash)
+                                memmove(modName, slash + 1, strlen(slash));
+                        }
+                        DWORD* sp = (DWORD*)(c->Esp & ~3u);
+                        int shown = 0;
+                        for (int i = 0; i < 512 && shown < 24; i++)
+                        {
+                            MEMORY_BASIC_INFORMATION mbi;
+                            if (!VirtualQuery(sp + i, &mbi, sizeof mbi) || !(mbi.State & MEM_COMMIT) || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)))
+                                break;
+                            DWORD v = sp[i];
+                            if (v >= (DWORD)base && v < (DWORD)base + exeSize)
+                            {
+                                shown++;
+                            }
+                            else if (g_self && v >= (DWORD)g_self && v < (DWORD)g_self + 0x40000)
+                            {
+                                shown++;
+                            }
+                        }
+                        return EXCEPTION_CONTINUE_SEARCH;
+                    }
+                    
+                    // Both patches have to land in the window between .text being decrypted and the audio system
+                    // initialising, so poll quickly rather than waiting on one signature.
+                    static DWORD WINAPI Worker(LPVOID)
+                    {
+                        BYTE* base = (BYTE*)GetModuleHandleA(NULL);
+                        const bool wantHeap  = g_cfgHeapMB > 0;
+                        const bool wantSlots = g_cfgSlots > kStockSlots;
+                    
+                        for (int i = 0; i < 2400; i++)
+                        {   // up to 2 minutes at 50 ms
+                            if (wantHeap && !g_heapDone)
+                                PatchAudioHeap(base);
+                            if (wantSlots && !g_slotsDone)
+                            {
+                                MEMORY_BASIC_INFORMATION mbi;
+                                if (VirtualQuery(base + kSlotBoundRva, &mbi, sizeof mbi) && (mbi.State & MEM_COMMIT)
+                                    && !(mbi.Protect & PAGE_NOACCESS) && !(mbi.Protect & PAGE_GUARD))
+                                {
+                                    if (*(DWORD*)(base + kSlotCountRva) != 0)
+                                    {
+                                        g_slotsMissedWindow = true;   // stop trying; the window is gone
+                                    }
+                                    else
+                                    {
+                                        PatchEngineSlots(base);
+                                    }
+                                }
+                            }
+                            if ((!wantHeap || g_heapDone) && (!wantSlots || g_slotsDone || g_slotsMissedWindow)) {
+                                return 0;
+                            }
+                            Sleep(50);
+                        }
+                        return 0;
+                    }
+                    
+                    BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID)
+                    {
+                        if (reason == DLL_PROCESS_ATTACH)
+                        {
+                            DisableThreadLibraryCalls(mod);
+                            g_self = mod;
+                            AddVectoredExceptionHandler(1, ExcLogger);
+                            char path[MAX_PATH];
+                            GetModuleFileNameA(mod, path, MAX_PATH);
+                            char* dot = strrchr(path, '.');
+                            if (dot)
+                                *dot = 0;
+                        
+                            g_cfgSlots  = GetPrivateProfileIntA("revd", "Slots", 0, g_ini);
+                            g_cfgHeapMB = GetPrivateProfileIntA("revd", "AudioHeapMB", 0, g_ini);
+                            g_cfgWriteWaveslots = GetPrivateProfileIntA("revd", "WriteWaveslots", 1, g_ini) != 0;
+                        
+                            if (g_cfgSlots != 0 && g_cfgSlots <= kStockSlots)
+                                g_cfgSlots = 0;
+                            if (g_cfgSlots > kMaxSlots)
+                                g_cfgSlots = kMaxSlots;
+                            if (g_cfgHeapMB != 0 && g_cfgHeapMB < 126)
+                                g_cfgHeapMB = 0;
+                            if (g_cfgHeapMB > 512)
+                                g_cfgHeapMB = 512;
+                        
+                            HANDLE t = CreateThread(NULL, 0, Worker, NULL, 0, NULL);
+                            if (t) CloseHandle(t);
+                        }
+                        return TRUE;
                     }
                 }
             }
