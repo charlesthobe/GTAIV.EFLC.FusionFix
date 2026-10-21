@@ -6,6 +6,7 @@ module;
 export module limits;
 
 import common;
+import comvars;
 import settings;
 
 class LimitAdjuster
@@ -597,6 +598,109 @@ public:
                         shGetWeaponInfoIdByHash = safetyhook::create_inline(pattern.get_first(0), getWeaponInfoIdByHash);
                     }
                 }
+
+                // Audio heap, WaveSlots and STREAM_ENGINE count
+                []
+                {
+                    constexpr auto increaseby = 2;
+                    constexpr uint8_t nStreamEngineSlots = 0x19;
+                    constexpr auto nStreamEngineSlotPoolSize = nStreamEngineSlots * 0x10;
+                    constexpr auto nAudioHeapSize = 0x7E00000;
+
+                    constexpr uint8_t nStreamEngineSlotsLimit = nStreamEngineSlots * increaseby;
+                    constexpr auto nStreamEngineSlotPoolSizeLimit = nStreamEngineSlotPoolSize * increaseby;
+                    constexpr auto nAudioHeapSizeLimit = nAudioHeapSize * increaseby;
+
+                    static std::vector<uint8_t> extendedStreamEngineSlotPool;
+
+                    // Extend values for STREAM_ENGINE_%d that could be handled by a certain function
+                    auto pattern = find_pattern("? 83 ? 10 83 ? 19 72");
+                    if (pattern.empty()) return;
+                    injector::WriteMemory<uint8_t>(pattern.get_first(6), nStreamEngineSlotsLimit, true);
+
+                    // Extend stream engine slot pool/array
+                    pattern = find_pattern("8b ? ? ? ? ? 83 ? ff 74 0a c1 ? 04 8b ? ? ? ? ? c3");
+                    if (pattern.empty()) return;
+                    auto aStreamEngineSlotPool = *pattern.get_first<uintptr_t>(16);
+                    extendedStreamEngineSlotPool.assign(nStreamEngineSlotPoolSizeLimit, 0);
+                    auto StreamEngineSlotPool = LimitAdjuster(aStreamEngineSlotPool, 0x10, nStreamEngineSlots, 14).IncreaseBy(increaseby).InsertNewArrayPointer(extendedStreamEngineSlotPool.data()).ReplaceXrefs(0x0, 0x4, 0x8, 0xc);
+
+                    // Extend size passed to heap allocator for audio
+                    pattern = find_pattern("be 00 00 E0 07 e8 ? ? ? ff");
+                    if (pattern.empty()) return;
+                    injector::WriteMemory(pattern.get_first(1), nAudioHeapSizeLimit, true);
+
+                    if (!UAL::AddVirtualFileForOverloadW) return;
+                    std::wstring s;
+                    s.resize(MAX_PATH, L'\0');
+                    if (!UAL::GetOverloadPathW || !UAL::GetOverloadPathW(s.data(), s.size()))
+                    {
+                        s = GetExeModulePath() / L"update";
+                    }
+                    auto updatePath = std::filesystem::path(s.data());
+                    auto xmlUpdatePath = updatePath / L"pc/audio/config/waveslots.xml";
+                    auto xmlPath = GetExeModulePath() / L"pc/audio/config/waveslots.xml";
+                    auto xmlOverloadPath = updatePath / L"fusionfix_cached_waveslots.xml";
+                    std::filesystem::path* usedPathPtr;
+                    if (std::filesystem::exists(xmlUpdatePath))
+                    {
+                        usedPathPtr = &xmlUpdatePath;
+                    }
+                    else
+                    {
+                        usedPathPtr = &xmlPath;
+                    }
+                    std::ifstream xmlFile(*usedPathPtr, std::ios::binary | std::ios::ate);
+                    if (!xmlFile) return;
+                    auto xmlSize = static_cast<size_t>(xmlFile.tellg());
+                    xmlFile.seekg(0, std::ios::beg);
+                    std::string xmlBuffer;
+                    xmlBuffer.resize(xmlSize);
+                    xmlFile.read(xmlBuffer.data(), xmlSize);
+                    std::erase(xmlBuffer, '\r');
+                    constexpr std::string_view terminator = "</WaveSlots>";
+                    auto terminatorPos = xmlBuffer.find(terminator);
+                    if (terminatorPos == std::string::npos) return;
+                    xmlBuffer.erase(terminatorPos, terminator.size());
+                    if (xmlBuffer.back() == '\n')
+                    {
+                        xmlBuffer.pop_back();
+                    }
+                    constexpr std::string_view fmtSTREAM_ENGINE =
+                        "\n"
+                        "  <Slot>\n"
+                        "    <Name content=\"ascii\">STREAM_ENGINE_{}</Name>\n"
+                        "    <MaxHeaderSize value=\"2048\" />\n"
+                        "    <LoadType content=\"ascii\">BANK</LoadType>\n"
+                        "    <Size value=\"794624\" />\n"
+                        "  </Slot>";
+                    bool overloadNeeded = false;
+                    for (int i = 0; i < nStreamEngineSlotsLimit; i++)
+                    {
+                        if (xmlBuffer.contains(std::format("STREAM_ENGINE_{}", i + 1)))
+                            continue;
+                        overloadNeeded = true;
+                        xmlBuffer.append(std::format(fmtSTREAM_ENGINE, i + 1));
+                    }
+                    if (!overloadNeeded) return;
+                    xmlBuffer.append("\n");
+                    xmlBuffer.append(terminator);
+                    if (std::filesystem::exists(xmlOverloadPath))
+                    {
+                        std::ifstream xmlOverloadFile(xmlOverloadPath, std::ios::binary | std::ios::ate);
+                        if (!xmlOverloadFile) return;
+                        auto xmlOverloadSize = static_cast<size_t>(xmlOverloadFile.tellg());
+                        xmlOverloadFile.seekg(0, std::ios::beg);
+                        std::string xmlOverloadBuffer;
+                        xmlOverloadBuffer.resize(xmlOverloadSize);
+                        xmlOverloadFile.read(xmlOverloadBuffer.data(), xmlOverloadSize);
+                        if (xmlOverloadBuffer == xmlBuffer) return;
+                    }
+                    std::ofstream xmlOverloadFile(xmlOverloadPath, std::ios::binary);
+                    if (!xmlOverloadFile) return;
+                    xmlOverloadFile.write(xmlBuffer.data(), xmlBuffer.size());
+                    UAL::AddVirtualPathForOverloadW(xmlPath.c_str(), xmlOverloadPath.c_str(), 1000);
+                }();
             }
         };
     }
