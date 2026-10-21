@@ -628,17 +628,21 @@ public:
 
             if (bExtendedWaveSlots)
             {
-                constexpr int NUM_STOCK_SLOTS = 0x19; // 25
-                constexpr uint8_t NUM_TARGET_SLOTS = 64;
+                constexpr auto increaseby = 3;
+                constexpr auto ms_iStandardSlots = 0x19 * 16;
+                constexpr uint8_t ms_iEngineSlots = 0x19;
+
+                constexpr auto ms_iStandardSlotsLimit = ms_iStandardSlots * increaseby;
+                constexpr uint8_t ms_iEngineSlotsLimit = ms_iEngineSlots * increaseby;
                 static std::vector<uint8_t> extendedSlotsTable;
 
                 auto pattern = find_pattern("e8 ? ? ? ff 8b 87 3c 0a 00 00 83 f8 ff 74 0b c1 e0 04 8b 80 ? ? ? ? eb 02 33 c0");
                 if (!pattern.empty())
                 {
-                    extendedSlotsTable.assign(32 + NUM_TARGET_SLOTS * 16, 0);
+                    extendedSlotsTable.assign(32 + ms_iStandardSlotsLimit * 16, 0);
                     auto aWaveSlots = *pattern.get_first<uintptr_t>(21);
                     // The first 32 bytes (8 32-bit words) are the header of the table, start binding after them.
-                    auto WaveSlots = LimitAdjuster(aWaveSlots, 4, NUM_STOCK_SLOTS * 4, 14).IncreaseBy(3).InsertNewArrayPointer(&extendedSlotsTable[8]).ReplaceXrefs(0x0, 0x4, 0x8, 0xc);
+                    auto WaveSlots = LimitAdjuster(aWaveSlots, 4, ms_iStandardSlots, 14).IncreaseBy(increaseby).InsertNewArrayPointer(&extendedSlotsTable[8]).ReplaceXrefs(0x0, 0x4, 0x8, 0xc);
 
                     // Original size passed to heap allecator is 0x7E00000 i.e 126 MiB
                     auto pattern = find_pattern("be 00 00 E0 07 e8 ? ? ? ff");
@@ -646,7 +650,7 @@ public:
                     injector::WriteMemory(pattern.get_first(1), 252 * 1024 * 1024, true);
                     // Original max slots the struct could handle is 0x19 i.e 25
                     pattern = find_pattern("? 83 ? 10 83 ? 19 72");
-                    injector::WriteMemory<uint8_t>(pattern.get_first(6), NUM_TARGET_SLOTS, true);
+                    injector::WriteMemory<uint8_t>(pattern.get_first(6), ms_iEngineSlotsLimit, true);
 
                     if (UAL::AddVirtualPathForOverloadW)
                     {
