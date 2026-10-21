@@ -12,7 +12,7 @@
   "BudgetedIV.PedBudget": "Бюджет пешеходов",
   "BudgetedIV.PedBudget.description": "Может вызывать проблемы; 0 оставляет игровое значение.",
   "BudgetedIV.VehicleBudget": "Бюджет транспорта",
-  "BudgetedIV.VehicleBudget.description": "Избавляет от бага с такси, может вызывать проблемы со звуком транспорта; 0 оставляет игровое значение.",
+  "BudgetedIV.VehicleBudget.description": "Избавляет от бага с такси; 0 оставляет игровое значение.",
   "Bullet Traces": "Всегда показывать следы от выстрелов",
   "Camera Shake": "Тряска камеры",
   "CAMERASENSITIVITY.GamepadAimSensitivityRange": "Диапазон чувствительности прицеливания геймпада",
