@@ -12,7 +12,7 @@
   "BudgetedIV.PedBudget": "Passanten-Budget",
   "BudgetedIV.PedBudget.description": "Kann Probleme verursachen; 0 behält den Wert des Spiels.",
   "BudgetedIV.VehicleBudget": "Fahrzeug-Budget",
-  "BudgetedIV.VehicleBudget.description": "Verhindert den Taxi-Bug, kann Probleme mit dem Fahrzeugsound verursachen; 0 behält den Wert des Spiels.",
+  "BudgetedIV.VehicleBudget.description": "Verhindert den Taxi-Bug; 0 behält den Wert des Spiels.",
   "Bullet Traces": "Schussspuren immer sichtbar",
   "Camera Shake": "Kamerawackeln",
   "CAMERASENSITIVITY.GamepadAimSensitivityRange": "Bereich der Controller-Zielempfindlichkeit",

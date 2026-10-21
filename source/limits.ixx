@@ -6,6 +6,7 @@ module;
 export module limits;
 
 import common;
+import comvars;
 import settings;
 
 class LimitAdjuster
@@ -172,6 +173,53 @@ public:
 
                 // Needed to avoid a predictable crash with high vehicle budgets (It usually happens in very specific places in the game world)
                 poolNames.push_back("VehicleStruct");
+
+                // Fix disappearing vehicle engine sound
+                auto ExtendWaveSlots = []()
+                {
+                    constexpr auto increaseby = 2;
+                    constexpr uint8_t nStreamEngineSlots = 0x19;
+                    constexpr auto nStreamEngineSlotPoolSize = nStreamEngineSlots * 0x10;
+                    constexpr auto nAudioHeapSize = 0x7E00000;
+
+                    constexpr uint8_t nStreamEngineSlotsLimit = nStreamEngineSlots * increaseby;
+                    constexpr auto nStreamEngineSlotPoolSizeLimit = nStreamEngineSlotPoolSize * increaseby;
+                    constexpr auto nAudioHeapSizeLimit = nAudioHeapSize * increaseby;
+
+                    static std::vector<uint8_t> extendedStreamEngineSlotPool;
+
+                    // Extend values for STREAM_ENGINE_%d that could be handled by a certain function
+                    auto pattern = find_pattern("? 83 ? 10 83 ? 19 72");
+                    if (pattern.empty()) return;
+                    injector::WriteMemory<uint8_t>(pattern.get_first(6), nStreamEngineSlotsLimit, true);
+
+                    // Extend stream engine slot pool/array
+                    pattern = find_pattern("8b ? ? ? ? ? 83 ? ff 74 0a c1 ? 04 8b ? ? ? ? ? c3");
+                    if (pattern.empty()) return;
+                    auto aStreamEngineSlotPool = *pattern.get_first<uintptr_t>(16);
+                    extendedStreamEngineSlotPool.assign(nStreamEngineSlotPoolSizeLimit, 0);
+                    auto StreamEngineSlotPool = LimitAdjuster(aStreamEngineSlotPool, 0x10, nStreamEngineSlots, 14).IncreaseBy(increaseby).InsertNewArrayPointer(extendedStreamEngineSlotPool.data()).ReplaceXrefs(0x0, 0x4, 0x8, 0xc);
+
+                    // Extend size passed to heap allocator for audio
+                    pattern = find_pattern("be 00 00 E0 07 e8 ? ? ? ff");
+                    if (pattern.empty()) return;
+                    injector::WriteMemory(pattern.get_first(1), nAudioHeapSizeLimit, true);
+
+                    if (UAL::AddVirtualPathForOverloadW)
+                    {
+                        std::wstring s;
+                        s.resize(MAX_PATH, L'\0');
+                        if (!UAL::GetOverloadPathW || !UAL::GetOverloadPathW(s.data(), s.size()))
+                        {
+                            s = GetExeModulePath() / L"update";
+                        }
+                        auto updatePath = std::filesystem::path(s.data());
+                        auto extendedXmlPath = updatePath / L"pc/audio/config/extendedwaveslots.xml";
+                        auto xmlPath = GetExeModulePath() / std::filesystem::path(L"pc/audio/config/waveslots.xml");
+                        UAL::AddVirtualPathForOverloadW(xmlPath.c_str(), extendedXmlPath.c_str(), 1000);
+                    }
+                };
+                if (nVehicleBudget > 40000000) ExtendWaveSlots();
             }
 
             if (nPedBudget)

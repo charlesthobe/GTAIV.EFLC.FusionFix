@@ -12,7 +12,7 @@
   "BudgetedIV.PedBudget": "Ped Budget",
   "BudgetedIV.PedBudget.description": "May cause issues; 0 keeps the game's.",
   "BudgetedIV.VehicleBudget": "Vehicle Budget",
-  "BudgetedIV.VehicleBudget.description": "Avoids the taxi bug, may cause vehicle audio issues; 0 keeps the game's.",
+  "BudgetedIV.VehicleBudget.description": "Avoids the taxi bug; 0 keeps the game's.",
   "Bullet Traces": "Always Show Bullet Traces",
   "Camera Shake": "Camera Shake",
   "CAMERASENSITIVITY.GamepadAimSensitivityRange": "Controller Aim Sensitivity Range",

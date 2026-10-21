@@ -12,7 +12,7 @@
   "BudgetedIV.PedBudget": "Budget pedoni",
   "BudgetedIV.PedBudget.description": "Può causare problemi; 0 mantiene il valore del gioco.",
   "BudgetedIV.VehicleBudget": "Budget veicoli",
-  "BudgetedIV.VehicleBudget.description": "Evita il bug dei taxi, può causare problemi all'audio dei veicoli; 0 mantiene il valore del gioco.",
+  "BudgetedIV.VehicleBudget.description": "Evita il bug dei taxi; 0 mantiene il valore del gioco.",
   "Bullet Traces": "Mostra sempre le tracce dei proiettili",
   "Camera Shake": "Vibrazione della camera",
   "CAMERASENSITIVITY.GamepadAimSensitivityRange": "Intervallo sensibilità mira del controller",

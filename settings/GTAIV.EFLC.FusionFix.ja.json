@@ -12,7 +12,7 @@
   "BudgetedIV.PedBudget": "歩行者の予算",
   "BudgetedIV.PedBudget.description": "不具合が起きる場合があります。0でゲームの値のままにします。",
   "BudgetedIV.VehicleBudget": "車両の予算",
-  "BudgetedIV.VehicleBudget.description": "タクシーのバグを防ぎますが、車両の音声に不具合が起きる場合があります。0でゲームの値のままにします。",
+  "BudgetedIV.VehicleBudget.description": "タクシーのバグを防ぎますが。0でゲームの値のままにします。",
   "Bullet Traces": "常に弾道を表示する",
   "Camera Shake": "カメラの振動",
   "CAMERASENSITIVITY.GamepadAimSensitivityRange": "コントローラーの照準感度の範囲",
