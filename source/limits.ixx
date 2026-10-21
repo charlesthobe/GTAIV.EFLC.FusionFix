@@ -633,8 +633,7 @@ public:
                 {
                     extendedSlotsTable.assign(ms_iWaveSlotsTableSizeLimit, 0);
                     auto aWaveSlots = *pattern.get_first<uintptr_t>(21);
-                    // The first 32 bytes (8 32-bit words) are the header of the table, start binding after them.
-                    auto WaveSlots = LimitAdjuster(aWaveSlots, 1, ms_iWaveSlotsTableSize, 14).IncreaseBy(increaseby).InsertNewArrayPointer(extendedSlotsTable.data()).ReplaceXrefs(0x0, 0x4, 0x8, 0xc);
+                    auto WaveSlots = LimitAdjuster(aWaveSlots, 1, ms_iWaveSlotsTableSize, 15).IncreaseBy(increaseby).InsertNewArrayPointer(extendedSlotsTable.data()).ReplaceXrefs(0x0, 0x4, 0x8, 0xc, 0x10);
 
                     // Original size passed to heap allecator is 0x7E00000 i.e 126 MiB
                     pattern = find_pattern("be 00 00 E0 07 e8 ? ? ? ff");
