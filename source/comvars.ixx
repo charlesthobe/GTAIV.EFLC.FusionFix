@@ -3087,7 +3087,6 @@ export namespace UAL
 {
     bool (WINAPI* GetOverloadPathW)(wchar_t* out, size_t out_size) = nullptr;
     bool (WINAPI* AddVirtualFileForOverloadW)(const wchar_t* virtualPath, const uint8_t* data, size_t size, int priority) = nullptr;
-    bool (WINAPI* AddVirtualPathForOverloadW)(const wchar_t* original, const wchar_t* target, int priority) = nullptr;
 }
 
 class Common
@@ -3104,7 +3103,6 @@ public:
             {
                 UAL::GetOverloadPathW = (decltype(UAL::GetOverloadPathW))GetProcAddress(m, "GetOverloadPathW");
                 UAL::AddVirtualFileForOverloadW = (decltype(UAL::AddVirtualFileForOverloadW))GetProcAddress(m, "AddVirtualFileForOverloadW");
-                UAL::AddVirtualPathForOverloadW = (decltype(UAL::AddVirtualPathForOverloadW))GetProcAddress(m, "AddVirtualPathForOverloadW");
                 break;
             }
         }

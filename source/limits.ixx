@@ -205,7 +205,7 @@ public:
                     if (pattern.empty()) return;
                     injector::WriteMemory(pattern.get_first(1), nAudioHeapSizeLimit, true);
 
-                    if (UAL::AddVirtualPathForOverloadW)
+                    if (UAL::AddVirtualFileForOverloadW)
                     {
                         std::wstring s;
                         s.resize(MAX_PATH, L'\0');
@@ -214,9 +214,59 @@ public:
                             s = GetExeModulePath() / L"update";
                         }
                         auto updatePath = std::filesystem::path(s.data());
-                        auto extendedXmlPath = updatePath / L"pc/audio/config/extendedwaveslots.xml";
+                        auto xmlUpdatePath = updatePath / L"pc/audio/config/waveslots.xml";
                         auto xmlPath = GetExeModulePath() / std::filesystem::path(L"pc/audio/config/waveslots.xml");
-                        UAL::AddVirtualPathForOverloadW(xmlPath.c_str(), extendedXmlPath.c_str(), 1000);
+                        std::filesystem::path* usedPathPtr;
+                        if (std::filesystem::exists(xmlUpdatePath))
+                        {
+                            usedPathPtr = &xmlUpdatePath;
+                        }
+                        else
+                        {
+                            usedPathPtr = &xmlPath;
+                        }
+                        std::ifstream xmlFile(*usedPathPtr, std::ios::binary | std::ios::ate);
+                        if (!xmlFile) return;
+                        auto xmlSize = static_cast<size_t>(xmlFile.tellg());
+                        xmlFile.seekg(0, std::ios::beg);
+                        std::string xmlBuffer;
+                        xmlBuffer.resize(xmlSize);
+                        xmlFile.read(xmlBuffer.data(), xmlSize);
+                        for (size_t i = 0; i < xmlBuffer.size(); i++)
+						{
+							if (xmlBuffer[i] == '\r')
+							{
+								xmlBuffer.erase(i, 1);
+							}
+						}
+                        bool engineExists[nStreamEngineSlotsLimit]{};
+						std::string terminator = "</WaveSlots>";
+						auto terminatorPos = xmlBuffer.find(terminator);
+                        if (terminatorPos == std::string::npos) return;
+                        xmlBuffer.erase(terminatorPos, terminator.length());
+                        if (xmlBuffer[xmlBuffer.size() - 1] == '\n') xmlBuffer.erase(xmlBuffer.size() - 1, 1);
+                        for (int i = 0; i < nStreamEngineSlotsLimit; i++)
+                        {
+                            if (xmlBuffer.contains(std::format("STREAM_ENGINE_{}", i + 1)))
+                            {
+                                engineExists[i] = true;
+                            }
+                        }
+
+                        constexpr const char* STREAM_ENGINE = "\n  <Slot>\n"
+                                                              "    <Name content=\"ascii\">STREAM_ENGINE_{}</Name>\n"
+                                                              "    <MaxHeaderSize value=\"2048\" />\n"
+                                                              "    <LoadType content=\"ascii\">BANK</LoadType>\n"
+                                                              "    <Size value=\"794624\" />\n"
+                                                              "  </Slot>";
+                        for (int i = 0; i < nStreamEngineSlotsLimit; i++)
+                        {
+                            if (engineExists[i]) continue;
+                            xmlBuffer.append(std::format(STREAM_ENGINE, i + 1));
+                        }
+                        xmlBuffer.append("\n");
+                        xmlBuffer.append(terminator);
+                        UAL::AddVirtualFileForOverloadW(xmlPath.c_str(), (const uint8_t*)xmlBuffer.c_str(), xmlBuffer.size(), 1000);
                     }
                 };
                 if (nVehicleBudget > 40000000) ExtendWaveSlots();
