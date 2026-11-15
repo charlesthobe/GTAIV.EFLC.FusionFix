@@ -1955,7 +1955,7 @@ namespace FusionFixGraphicsApi
     // Whether a display of the system is in HDR mode (Windows HDR on), through DXGI (loaded by its full path)
     inline bool AnyDisplayHdr()
     {
-        auto dxgi = LoadLibraryExW(L"dxgi.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        auto dxgi = LoadLibraryExW(L"dxgi.dll", nullptr, 0);
         using CreateFactoryFn = HRESULT(WINAPI*)(REFIID, void**);
         auto createFactory = dxgi ? reinterpret_cast<CreateFactoryFn>(GetProcAddress(dxgi, "CreateDXGIFactory1")) : nullptr;
         IDXGIFactory1* factory = nullptr;
